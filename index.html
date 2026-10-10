@@ -479,7 +479,8 @@ details summary{list-style:revert}
   .mini{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style></head>
+</style>
+<link rel="stylesheet" href="compact.css"></head>
 <body>
 <div class="app" id="app">
   <aside class="side" id="side" aria-label="Main navigation">
@@ -1181,7 +1182,7 @@ function dForecast(el){
    ========================================================= */
 const RADAR={filter:'ALL',sort:'pri'};
 function radarSvg(rows,W){
-  const H=Math.max(300,rows.length*12+70),L=W<600?12:24,Rr=W<600?12:24,T=34,B=30;
+  const H=Math.max(300,Math.min(520,rows.length*12+70)),L=W<600?12:24,Rr=W<600?12:24,T=34,B=30;
   const t0=new Date(MONWIN()[0][0]+'-01'),t1=new Date(addDays(MONWIN()[5][0]+'-01',30));
   const x=d=>L+(new Date(d)-t0)/(t1-t0)*(W-L-Rr);
   const sorted=[...rows].sort((a,b)=>b.tick-a.tick),laneH=(H-T-B-6)/Math.max(sorted.length,1);
@@ -1193,9 +1194,9 @@ function radarSvg(rows,W){
   s+='<line x1="'+xt+'" y1="'+(T-6)+'" x2="'+xt+'" y2="'+(H-B)+'" stroke-width="1.5" stroke-dasharray="4 4" style="stroke:var(--ink)"/><text x="'+(xt+5)+'" y="'+(T-12)+'" font-size="11" font-weight="700" style="fill:var(--ink)">Data date</text>';
   s+='<text x="'+((L+xt)/2)+'" y="'+(H-9)+'" text-anchor="middle" font-size="11.5" font-weight="600" style="fill:var(--over)">Overdue: the annuity leaking now</text>';
   s+='<text x="'+((xt+W-Rr)/2)+'" y="'+(H-9)+'" text-anchor="middle" font-size="11.5" font-weight="600" style="fill:var(--due)">The forward order book</text>';
-  sorted.forEach((r,i)=>{const cy=T+6+i*laneH+laneH/2,cx=Math.max(L+4,Math.min(W-Rr-4,x(r.due))),rad=Math.max(3.5,Math.min(10,Math.sqrt(r.tick)/95));
+  let lastLab=-99;sorted.forEach((r,i)=>{const cy=T+6+i*laneH+laneH/2,cx=Math.max(L+4,Math.min(W-Rr-4,x(r.due))),rad=Math.max(3.5,Math.min(10,Math.sqrt(r.tick)/95));
     s+='<circle class="dot" data-i="'+r.id+'" cx="'+cx+'" cy="'+cy+'" r="'+rad+'" style="fill:'+ST[r.st].c+';fill-opacity:'+(r.st==='UPCOMING'?.7:.9)+';stroke:var(--panel)" stroke-width="1"/>';
-    if((r.tick>350000||i<12)&&W>560){const left=cx>W*.72,nm=r.c.length>24?r.c.slice(0,23)+'\u2026':r.c;
+    if((r.tick>350000||i<12)&&W>560&&cy-lastLab>=13){lastLab=cy;const left=cx>W*.72,nm=r.c.length>24?r.c.slice(0,23)+'\u2026':r.c;
       s+='<text x="'+(left?cx-rad-6:cx+rad+6)+'" y="'+(cy+3.5)+'" text-anchor="'+(left?'end':'start')+'" font-size="11" pointer-events="none" style="fill:var(--mute)">'+esc(nm)+' \u00b7 '+esc(r.p)+'</text>'}});
   return s+'</svg>';
 }
@@ -1261,12 +1262,12 @@ PAGES.forecast={title:'Forecast check',icon:'target',render(el){
     '</tbody></table></div></div>';
   el.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{PAGES.forecast.f=b.dataset.f;renderPage()});
   el.querySelectorAll('tr.click').forEach(t=>t.onclick=()=>openCustomer(t.dataset.k,{tab:'forecast'}));
-  const draw=()=>{const box=el.querySelector('#fcChart');if(!box)return;const W=box.clientWidth||900,L=W<600?90:150,Rr=16,T=30,lh=13,HH=T+rows.length*lh+16;
+  const draw=()=>{const box=el.querySelector('#fcChart');if(!box)return;const W=box.clientWidth||900,L=W<600?90:150,Rr=16,T=30,lh=13,lm=5,HH=T+rows.reduce((a,r)=>a+(r.hit?lh:lm),0)+16;
     const t0=new Date('2026-03-01'),t1=new Date('2026-08-15'),x=d=>L+(new Date(d)-t0)/(t1-t0)*(W-L-Rr);
     let s='<svg viewBox="0 0 '+W+' '+HH+'" role="img" aria-label="Predictions against actual orders">';
     [['2026-03-01','Mar'],['2026-04-01','Apr'],['2026-05-01','May'],['2026-06-01','Jun'],['2026-07-01','Jul'],['2026-08-01','Aug']].forEach(m=>{const xx=x(m[0]);s+='<line x1="'+xx+'" y1="'+(T-6)+'" x2="'+xx+'" y2="'+(HH-6)+'" style="stroke:var(--line2)"/><text x="'+(xx+4)+'" y="'+(T-12)+'" font-size="11" style="fill:var(--faint)">'+m[1]+'</text>'});
     const xm=x('2026-03-31');s+='<line x1="'+xm+'" y1="'+(T-6)+'" x2="'+xm+'" y2="'+(HH-6)+'" stroke-width="1.5" stroke-dasharray="4 4" style="stroke:var(--ink)"/><text x="'+(xm-5)+'" y="'+(T-12)+'" text-anchor="end" font-size="11" font-weight="700" style="fill:var(--ink)">Predictions fixed</text>';
-    rows.forEach((r,i)=>{const cy=T+6+i*lh,xp=x(r.due);
+    let yy=T+6;rows.forEach((r,i)=>{const cy=yy;yy+=r.hit?lh:lm;const xp=x(r.due);
       if(r.hit&&r.adt){const xa=x(r.adt);s+='<line x1="'+Math.min(xp,xa)+'" x2="'+Math.max(xp,xa)+'" y1="'+cy+'" y2="'+cy+'" stroke-width="2" style="stroke:var(--due);opacity:.35"/><circle cx="'+xa+'" cy="'+cy+'" r="4.5" style="fill:var(--due)"/>'}
       s+='<circle cx="'+xp+'" cy="'+cy+'" r="4" fill="none" stroke-width="1.8" style="stroke:'+(r.hit?'var(--due)':'var(--faint)')+'"/>';
       if(r.hit)s+='<text x="'+(L-8)+'" y="'+(cy+3.5)+'" text-anchor="end" font-size="10.5" style="fill:var(--mute)">'+esc(r.c.length>(W<600?12:22)?r.c.slice(0,W<600?11:21)+'\u2026':r.c)+'</text>'});
@@ -1996,7 +1997,7 @@ function findCustAll(name){const n=resolveKey(norm(name));if(!n)return [];if(CUS
   const ex=Object.values(CUST).filter(c=>[...c.names].some(x=>norm(x)===n));if(ex.length)return [...new Set(ex)];
   return Object.keys(CUST).filter(k=>k.startsWith(n+' ')||n.startsWith(k+' ')).map(k=>CUST[k])}
 function findCust(name){const n=norm(name);if(!n)return null;if(CUST[n])return CUST[n];const k=Object.keys(CUST).find(k=>k.startsWith(n+' ')||n.startsWith(k+' '));return k?CUST[k]:null}
-const TM={f:'all',q:'',limit:60};
+const TM={f:'all',q:'',limit:100000};
 function personStats(p){
   const inP=(ck,owner)=>{if(p.zones!=='all'&&!p.zones.includes(zoneOf(ck)))return false;if(p.queues&&owner!==undefined){const o=Array.isArray(owner)?owner:[owner];return o.some(x=>p.queues.includes(x))}return true};
   if(p.role==='sales'){const r=R.radar.filter(x=>inP(x.ck));const o=Object.values(OUT).filter(x=>x.by===p.id).length;
@@ -2080,8 +2081,8 @@ PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
   el.querySelectorAll('[data-prim]').forEach(b=>b.onclick=()=>{const [rid,z,pid]=b.dataset.prim.split('|');setPrimary(rid,z,pid);refreshNav();renderPage();toast(personById(pid).name+' is now primary for '+z)});
   el.querySelectorAll('[data-sign]').forEach(b=>b.onclick=()=>switchPerson(b.dataset.sign));
   el.querySelectorAll('.tz').forEach(sel=>sel.onchange=()=>{const k=sel.dataset.k;if(sel.value==='Unassigned')return;if(setTerritory(k,sel.value,'Manual'))toast(CUST[k].name+' moved to '+sel.value);refreshNav();renderPage()});
-  el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{TM.f=b.dataset.tf;TM.limit=60;renderPage()});
-  el.querySelectorAll('[data-tf2]').forEach(b=>b.onclick=()=>{TM.f=b.dataset.tf2;TM.limit=60;renderPage();$('#ctab').scrollIntoView({behavior:'smooth'})});
+  el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{TM.f=b.dataset.tf;TM.limit=100000;renderPage()});
+  el.querySelectorAll('[data-tf2]').forEach(b=>b.onclick=()=>{TM.f=b.dataset.tf2;TM.limit=100000;renderPage();$('#ctab').scrollIntoView({behavior:'smooth'})});
   el.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>$('#'+b.dataset.jump).scrollIntoView({behavior:'smooth'}));
   el.querySelectorAll('[data-merge]').forEach(b=>b.onclick=()=>{const [a,c]=b.dataset.merge.split('|'),A=CUST[a],B=CUST[c];
     const score=x=>(x.radar.length?4:0)+(x.visit?2:0)+(x.rec.length?1:0);const [from,to]=score(A)>=score(B)?[B,A]:[A,B];
@@ -2089,7 +2090,7 @@ PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
     const l=store.get('steer-alias',{});l[from.key]=to.key;store.set('steer-alias',l);SYNC.alias(from.key,to.key);logChange({ck:to.key,name:to.name,from:from.name,to:to.name,how:'Merged duplicate'});
     toast('Merged. Reloading to rebuild the record.');setTimeout(()=>location.reload(),900)});
   el.querySelectorAll('[data-nomerge]').forEach(b=>b.onclick=()=>{const [a,c]=b.dataset.nomerge.split('|'),k=pairKey(a,c);ALIAS_NO[k]=1;store.set('steer-alias-no',ALIAS_NO);SYNC.aliasNo(k);refreshNav();renderPage();toast('Kept as different customers')});
-  const tq=el.querySelector('#tQ');tq.oninput=()=>{TM.q=tq.value;TM.limit=60;const p=tq.selectionStart;renderPage();const n=$('#tQ');n.focus();n.setSelectionRange(p,p)};
+  const tq=el.querySelector('#tQ');tq.oninput=()=>{TM.q=tq.value;TM.limit=100000;const p=tq.selectionStart;renderPage();const n=$('#tQ');n.focus();n.setSelectionRange(p,p)};
   const mo=el.querySelector('#tMore');if(mo)mo.onclick=()=>{TM.limit+=60;const y=$('#view').scrollTop;renderPage();$('#view').scrollTop=y};
   const ib=el.querySelector('#tImp');if(ib)ib.onclick=()=>{const b=$('#impBox');b.hidden=!b.hidden;if(!b.hidden)$('#impTxt').focus()};
   const ig=el.querySelector('#impGo');if(ig)ig.onclick=()=>{let ok=0;const miss=[],amb=[],bad=[];
@@ -3340,4 +3341,5 @@ addEventListener('hashchange',route);
 route();
 connectShared();
 </script>
+<script src="compact.js"></script>
 </body></html>

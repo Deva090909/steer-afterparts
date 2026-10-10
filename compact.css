@@ -1,0 +1,89 @@
+/* STEER workspace — compact layout layer (less scrolling).
+   Loaded after the app's own styles; only tightens spacing and adds the
+   pager / collapse / pane behaviours driven by compact.js. */
+
+/* ---------- density ---------- */
+.page{padding:16px 24px 32px}
+.ph1{margin-bottom:12px}
+.ph1 h1{font-size:21px}
+.card>.ch{padding:10px 16px}
+.card>.ch h2{font-size:14.5px}
+.card>.cb,.cb{padding:12px 16px}
+.card>.cb.flush{padding:0}
+.page .card[style*="margin-bottom:16px"]{margin-bottom:12px!important}
+.grid2,.grid-31,.cols3{gap:12px}
+.stack>*+*{margin-top:12px}
+.kpis{gap:10px;margin-bottom:12px}
+.kpi{padding:10px 14px}
+.kpi .v{font-size:21px}
+.tbl th{padding:7px 12px}
+.tbl td{padding:7px 12px}
+.tbl-foot{padding:7px 16px}
+.linkrow,.r.linkrow{padding-top:7px!important;padding-bottom:7px!important}
+.banner{padding:9px 14px!important}
+.scopebar{min-height:0}
+
+/* ---------- table pager ---------- */
+.tbl tr.pg-off{display:none!important}
+.tbl-wrap.pg-on,.pg-on{max-height:none!important}
+.pgbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:7px 16px;border-top:1px solid var(--line2);font-size:12.5px;color:var(--mute);background:var(--panel)}
+.pgbar .pgnav{display:flex;align-items:center;gap:4px}
+.pgbar button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;height:26px;min-width:28px;padding:0 8px;font:inherit;font-size:12.5px;cursor:pointer}
+.pgbar button:hover:not(:disabled){background:var(--hover)}
+.pgbar button:disabled{opacity:.4;cursor:default}
+.pgbar select{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;height:26px;font:inherit;font-size:12.5px;padding:0 4px}
+.pgbar b{color:var(--ink);font-weight:600}
+
+/* ---------- short lists (worklists, timelines) ---------- */
+.ls-off{display:none!important}
+.lsmore{display:block;width:100%;border:0;border-top:1px solid var(--line2);background:none;color:var(--accent);font:inherit;font-size:12.5px;font-weight:600;padding:8px 16px;text-align:left;cursor:pointer}
+.lsmore:hover{background:var(--hover)}
+
+/* ---------- collapsible cards ---------- */
+.card:has(>.ch>.cl-tog){position:relative}
+.card>.ch:has(>.cl-tog){padding-right:46px}
+.cl-tog{position:absolute;top:9px;right:10px;border:0;background:none;color:var(--mute);width:28px;height:28px;border-radius:6px;display:grid;place-items:center;cursor:pointer}
+.cl-tog:hover{background:var(--hover);color:var(--ink)}
+.cl-tog svg{width:16px;height:16px;transition:transform .15s}
+.card.cl-shut>.cl-tog svg,.card.cl-shut>.ch .cl-tog svg{transform:rotate(-90deg)}
+.card.cl-shut>*:not(.ch){display:none!important}
+.card.cl-shut>.ch{border-bottom:0}
+.card>.ch h2.cl-h{cursor:pointer}
+
+/* ---------- master–detail panes scroll inside, not the page ---------- */
+@media (min-width:901px){
+  .casewrap{height:calc(100vh - 230px);min-height:420px}
+  .casewrap>.caselist,.casewrap>.pane{overflow:auto;max-height:none;min-height:0}
+  .inboxwrap{height:calc(100vh - 250px);min-height:440px}
+  .inboxwrap>.inbox{max-height:none;min-height:0}
+  .inboxwrap>.pane{overflow:auto;max-height:none}
+}
+
+/* ---------- wider grids on large screens ---------- */
+@media (min-width:1280px){
+  .wkgrid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+  .upgrid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+}
+/* upload tiles: tighter */
+.card.up>.cb{padding:12px 14px}
+.card.up .note[style*="min-height:54px"]{min-height:0!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:4px 0 8px!important}
+
+/* back-to-top for any remaining long page */
+.totop{position:fixed;right:16px;bottom:56px;z-index:50;width:36px;height:36px;border-radius:50%;border:0;background:var(--ink);color:var(--panel);opacity:0;pointer-events:none;transition:opacity .2s;display:grid;place-items:center;box-shadow:var(--pop);cursor:pointer}
+.totop.show{opacity:.8;pointer-events:auto}
+.totop svg{width:18px;height:18px}
+.grp-off{display:none!important}
+.cgtabs{margin:4px 0 12px}
+.card.up .btn.sm{padding-left:9px;padding-right:9px}
+.sec-off{display:none!important}
+.sectabs{margin:0 0 12px;position:sticky;top:0;z-index:5;background:var(--canvas);padding:6px 0}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.lbtabs{margin:0 0 10px}
+.card>.lbtabs{margin:0 16px 10px}
+@media (max-width:620px){
+  .page{padding:12px 12px 28px}
+  .card.up .note[style*="min-height:54px"]{-webkit-line-clamp:1}
+  .card.up>.cb{padding:10px 12px}
+  .kpi{padding:8px 12px}.kpi .v{font-size:19px}
+  .pgbar{padding:6px 12px}
+}
