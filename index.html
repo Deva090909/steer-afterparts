@@ -824,7 +824,7 @@ const initials=n=>String(n).replace(/[^A-Za-z& ]/g,' ').split(/\s+/).filter(w=>w
 const coverage=p=>(p.zones==='all'?'All territories':p.zones.join(', '))+(p.queues?' \u00b7 '+p.queues.map(q=>q.split(' \u2014')[0]).join(', ')+' queue':'');
 let ME=null,SCOPE_ALL=false,ZF='all';
 const lastPerson=store.get('steer-person',{});
-function scopeZones(){if(ME.zones==='all')return ZF==='all'?null:[ZF];return SCOPE_ALL?null:ME.zones}
+function scopeZones(){if(ME.zones==='all')return ZF==='all'?null:[ZF];return SCOPE_ALL?null:(typeof coverZones==='function'?coverZones(ME):ME.zones)}
 function inScope(ck,owner){const z=scopeZones();if(z&&!z.includes(zoneOf(ck)))return false;
   if(ME.queues&&!SCOPE_ALL&&owner!==undefined){const o=Array.isArray(owner)?owner:[owner];if(!o.some(x=>ME.queues.includes(x)))return false}return true}
 /* who covers a territory, primary first. Queue specialists are not territory owners. */
@@ -834,10 +834,13 @@ function teamFor(rid,z){const pr=primaryOf(rid,z);return pr?[pr].concat(coverers
 const ownersOf=z=>teamFor('sales',z);
 const ownerLabel=(rid,z)=>{const t=teamFor(rid,z);return t.length?t.map((p,i)=>esc(p.name)+(t.length>1?(i?' (backup)':' (primary)'):'')).join(', '):'Head only'};
 function setPrimary(rid,z,pid){PRIMARY[rid+'|'+z]=pid;store.set('steer-primary',PRIMARY);SYNC.primary(rid+'|'+z)}
-const canLogFor=ck=>role.id==='sales'&&(ME.head||coverers('sales',zoneOf(ck)).includes(ME));
+const canLogFor=ck=>role.id==='sales'&&(ME.head||coverers('sales',zoneOf(ck)).includes(ME)||(typeof coverZones==='function'&&coverZones(ME)!=='all'&&coverZones(ME).includes(zoneOf(ck))));
 /* the one person accountable for an open complaint */
-function accountableFor(i){const q=PEOPLE.find(p=>p.role==='quality'&&p.queues&&p.queues.includes(i.owner));if(q)return q;
+function baseAccountable(i){if(i.assignee){const a=personById(i.assignee);if(a&&a.active!==false)return a}
+  const q=PEOPLE.find(p=>p.role==='quality'&&p.queues&&p.queues.includes(i.owner));if(q)return q;
   return primaryOf('quality',zoneOf(i.ck))||personById('q-head')}
+/* who acts on it today: the accountable person, or their stand-in while they are on leave */
+function accountableFor(i){const b=baseAccountable(i);return typeof actingFor==='function'?actingFor(b):b}
 /* access: heads and leadership see everything; others see their own customers */
 const canSeeCustomer=ck=>ME.head||ME.zones==='all'||ME.zones.includes(zoneOf(ck))||(ME.queues&&true);
 /* mapping health: gaps, unresolved overlaps, triage and identity review */
@@ -857,7 +860,7 @@ const ROLES=[
  {id:'quality',name:'Quality',who:'Complaints owner',desc:'Every complaint read, matched and routed. Repeat patterns caught early.',ini:'QA',c:'var(--quality)',home:'mywk',
   nav:[{sec:'My work'},{id:'mywk'},{id:'inbox',ct:()=>{const n=C.feed.slice(0,FEED.i).filter(m=>inScope(m.ck,m.route)).length;return n||null}},{id:'board',ct:()=>BOARD.open.filter(i=>inScope(i.ck,i.owner)).length,hot:true},{id:'cases',ct:()=>Object.values(C.cases).filter(c=>c.open>0&&inScope(c.ck,c.owners)).length},{sec:'Customers'},{id:'health'},{id:'voc'},{id:'orders'},{sec:'Team',head:true},{id:'team',head:true},{id:'scorecard',head:true},{id:'trends',head:true},{id:'uploads',head:true},{id:'market',head:true}]},
  {id:'service',name:'Service',who:'Field service',desc:'Who to visit, why, and whether the trip earns back its cost.',ini:'SV',c:'var(--service)',home:'mywk',
-  nav:[{sec:'My work'},{id:'mywk'},{id:'planner'},{id:'visits',ct:()=>V.rec.filter(r=>r.cls==='P1'&&inScope(r.ck)).length,hot:true},{id:'reports',ct:()=>Object.values(VIS).filter(v=>inScope(cust(v.customer).key)).length||null},{id:'schedule',ct:()=>{try{return allPlans().filter(p=>p.overdue&&inScope(p.ck)).length||null}catch(e){return null}},hot:true},{id:'amc'},{id:'recovery'},{sec:'Customers'},{id:'health'},{id:'ib'},{sec:'Planning'},{id:'cohorts'},{id:'demand'},{sec:'Team',head:true},{id:'team',head:true},{id:'scorecard',head:true},{id:'trends',head:true},{id:'uploads',head:true},{id:'market',head:true}]}
+  nav:[{sec:'My work'},{id:'mywk'},{id:'planner'},{id:'visits',ct:()=>V.rec.filter(r=>r.cls==='P1'&&inScope(r.ck)).length,hot:true},{id:'reports',ct:()=>Object.values(VIS).filter(v=>inScope(cust(v.customer).key)).length||null},{id:'schedule',ct:()=>{try{return allPlans().filter(p=>p.overdue&&(inScope(p.ck)||p.ownerId===ME.id)).length||null}catch(e){return null}},hot:true},{id:'amc'},{id:'recovery'},{sec:'Customers'},{id:'health'},{id:'ib'},{sec:'Planning'},{id:'cohorts'},{id:'demand'},{sec:'Team',head:true},{id:'team',head:true},{id:'scorecard',head:true},{id:'trends',head:true},{id:'uploads',head:true},{id:'market',head:true}]}
 ];
 let overdueN=R.radar.filter(r=>r.st==='OVERDUE').length;
 let openCasesN=Object.values(C.cases).filter(c=>c.open>0).length;
@@ -1031,7 +1034,9 @@ async function connectShared(){
     onCol('territories',rows=>{TERR={};rows.forEach(r=>TERR[r.ck]=r.zone);store.set('steer-terr',TERR)},()=>Object.keys(TERR).forEach(k=>SYNC.terr(k)));
     onCol('people',rows=>{rows.forEach(r=>{let p=personById(r.id);if(!p&&r.role&&r.name){p=Object.assign({active:true},r);PEOPLE_ALL.push(p)}
       if(p){p.name=r.name;p.zones=r.zones;['title','email','queues','removedAt','removedBy','added','addedBy'].forEach(k=>{if(r[k]!==undefined)p[k]=r[k]});if(r.active!==undefined)p.active=r.active}});
-      rebuildPeople();savePeople();if(ME&&ME.active===false){toast('Access for '+ME.name+' was removed');route()}},()=>PEOPLE_ALL.forEach(p=>{if(PEDIT[p.id]||!isBuiltIn(p))SYNC.person(p)}));
+      rebuildPeople();savePeople();if(typeof enforceSession==='function')enforceSession();if(ME&&ME.active===false){toast('Access for '+ME.name+' was removed');route()}},()=>PEOPLE_ALL.forEach(p=>{if(PEDIT[p.id]||!isBuiltIn(p))SYNC.person(p)}));
+    onCol('covers',rows=>{if(typeof COVERS==='undefined')return;COVERS={};rows.forEach(r=>COVERS[r.id]=r);store.set('steer-covers',COVERS)},()=>{if(typeof COVERS!=='undefined')Object.values(COVERS).forEach(c=>SYNC.w('covers/'+c.id,c))});
+    onCol('reviews',rows=>{if(typeof REVIEWS==='undefined')return;REVIEWS={};rows.forEach(r=>REVIEWS[r.id]=r);store.set('steer-reviews',REVIEWS)},()=>{if(typeof REVIEWS!=='undefined')Object.values(REVIEWS).forEach(c=>SYNC.w('reviews/'+c.id,c))});
     onCol('access',rows=>{if(typeof ACCLOG==='undefined')return;const m={};ACCLOG.concat(rows).forEach(e=>m[e.id]=e);ACCLOG=Object.values(m).sort((a,b)=>b.at-a.at).slice(0,500);store.set('steer-acclog',ACCLOG)},()=>{if(typeof ACCLOG!=='undefined')ACCLOG.forEach(e=>SYNC.w('access/'+e.id,e))});
     onCol('primary',rows=>{PRIMARY={};rows.forEach(r=>PRIMARY[r.k]=r.pid);store.set('steer-primary',PRIMARY)},()=>Object.keys(PRIMARY).forEach(k=>SYNC.primary(k)));
     onCol('outcomes',rows=>{OUT={};rows.forEach(r=>{const o=Object.assign({},r);delete o.key;OUT[r.key]=o});store.set('steer-outcomes',OUT)},()=>Object.keys(OUT).forEach(k=>SYNC.out(k)));
@@ -1729,7 +1734,7 @@ function buildBoard(){const seen=new Set(),items=[];
 const itemByNo=no=>BOARD.items.find(i=>i.no===no);
 
 /* who may change a complaint: Quality owners for it and the heads; everyone else adds notes */
-function canUpdateComplaint(i){if(role.id!=='quality')return false;if(ME.head)return true;
+function canUpdateComplaint(i){if(role.id!=='quality')return false;if(ME.head)return true;if(accountableFor(i)===ME)return true;
   if(ME.queues)return ME.queues.includes(i.owner);if(i.assignee===ME.id)return true;return coverers('quality',zoneOf(i.ck)).includes(ME)}
 function saveCompl(no){store.set('steer-compl',COMPL);SYNC.w('complaints/'+sid(no),COMPL[no]);BOARD=buildBoard();recountCases()}
 function recountCases(){Object.values(C.cases).forEach(cs=>{cs.owners=[...new Set(cs.lines.map(l=>ownerOf(l.defect)))];cs.open=cs.lines.filter(l=>{const it=itemByNo(l.no);return it?it.open:l.open}).length});openCasesN=Object.values(C.cases).filter(c=>c.open>0).length}
@@ -2676,8 +2681,8 @@ function myTasks(){const t=[],P=ME,add=(c,h,s,f,key)=>t.push({c,h,s,f,key});
       if(sl==='overdue')add('var(--bad)','<b>'+esc(i.no)+'</b> not acknowledged ('+esc(i.cust)+')','Due '+dmy(ackDue(i)),()=>openComplaint(i.no),'ack'+i.no);
       else if(i.stale)add('var(--warn)','<b>'+esc(i.no)+'</b> has had no update for 14 days','Customer: '+esc(i.cust),()=>openComplaint(i.no),'st'+i.no)});
     BOARD.items.filter(i=>i.status==='Closed'&&i.closedDate&&COMPL[i.no]&&!COMPL[i.no].verified&&verifyDue(i)<=TODAY_ISO&&(accountableFor(i)===P||P.head)).forEach(i=>add('var(--warn)','Check the fix on <b>'+esc(i.no)+'</b> worked','Closed '+dmy(i.closedDate)+', check was due '+dmy(verifyDue(i)),()=>openComplaint(i.no),'vf'+i.no))}
-  if(role.id==='sales')Object.values(VIS).filter(v=>v.parts&&v.parts.length&&leadOf(v).status==='New'&&canLogFor(cust(v.customer).key)).forEach(v=>add('var(--due)','New lead: <b>'+esc(v.customer)+'</b>','From '+esc(v.engineer)+'\u2019s visit on '+dmy(v.date)+(v.opp?' \u00b7 '+inr(v.opp):''),()=>openLead(v.id),'ld'+v.id));
-  if(role.id==='service')allPlans().filter(p=>p.overdue&&inScope(p.ck)).forEach(p=>add('var(--bad)','Planned visit overdue: <b>'+esc(p.customer)+'</b>',dmy(p.date)+(p.engineer?' \u00b7 '+esc(p.engineer):' \u00b7 no engineer'),()=>go('schedule'),'pl'+p.id));
+  if(role.id==='sales')Object.values(VIS).filter(v=>v.parts&&v.parts.length&&leadOf(v).status==='New'&&(canLogFor(cust(v.customer).key)||leadOf(v).ownerId===ME.id)).forEach(v=>add('var(--due)','New lead: <b>'+esc(v.customer)+'</b>','From '+esc(v.engineer)+'\u2019s visit on '+dmy(v.date)+(v.opp?' \u00b7 '+inr(v.opp):''),()=>openLead(v.id),'ld'+v.id));
+  if(role.id==='service')allPlans().filter(p=>p.overdue&&(inScope(p.ck)||p.ownerId===ME.id)).forEach(p=>add('var(--bad)','Planned visit overdue: <b>'+esc(p.customer)+'</b>',dmy(p.date)+(p.engineer?' \u00b7 '+esc(p.engineer):' \u00b7 no engineer'),()=>go('schedule'),'pl'+p.id));
   if(P.head||P.id==='cfo'){Object.keys(DSOWN).filter(n=>isOwnerOf(n)&&freshness(n).st==='overdue').forEach(n=>add('var(--warn)',esc(SCHEMA[n].label)+' upload is overdue',freshness(n).label,()=>go('uploads'),'up'+n));
     Object.values(PENDING).filter(x=>x.status==='Pending'&&isOwnerOf(x.name)&&x.byId!==P.id).forEach(x=>add('var(--warn)','Approve upload: <b>'+esc(x.file)+'</b>','From '+esc(x.by)+' \u00b7 '+x.count+' rows',()=>go('uploads'),'pa'+x.id))}
   return t}
@@ -3222,14 +3227,14 @@ PAGES.mywk={title:'My week',icon:'home',render(el){
     sec('First-repeat follow-ups','First-time buyers inside or just past the four-month window',add(FTALL.filter(r=>inScope(r.ck)&&r.stage!=='red').map(r=>({h:esc(r.cust),s:'Day '+r.dno+' since first order \u00b7 '+STAGE[r.stage][1],v:inr(r.spend12),f:()=>go('countdown')}))),'countdown');
     sec('Recovery calls','Dark accounts not yet contacted',add(scopedCust().filter(c=>H[c.key].dark&&recOf(c.key).status==='Not started').sort((a,b)=>H[b.key].annual-H[a.key].annual).map(c=>({h:esc(c.name),s:'Service-led: book a health check first',v:inr(H[c.key].annual),f:()=>openRecovery(c.key)}))),'recovery');
     sec('Quote follow-ups','Day 5 and day 10 touches due',add(rsAll('quotes').filter(q=>inScope(cust(q.customer).key)).flatMap(q=>followUps(q).map(f=>({h:esc(q.quote_no)+' \u00b7 '+esc(q.customer),s:'Day '+f.d+' follow-up, due '+dmy(f.due),v:inr(q.value||0),f:()=>go('quotes')})))),'quotes');
-    sec('Leads from service visits','',add(Object.values(VIS).filter(v=>v.parts&&v.parts.length&&leadOf(v).status==='New'&&canLogFor(cust(v.customer).key)).map(v=>({h:esc(v.customer),s:v.parts.join(', ')+' \u00b7 '+esc(v.engineer)+' on '+dmy(v.date),v:v.opp?inr(v.opp):'',f:()=>openLead(v.id)}))),'');
+    sec('Leads from service visits','',add(Object.values(VIS).filter(v=>v.parts&&v.parts.length&&leadOf(v).status==='New'&&(canLogFor(cust(v.customer).key)||leadOf(v).ownerId===ME.id)).map(v=>({h:esc(v.customer),s:v.parts.join(', ')+' \u00b7 '+esc(v.engineer)+' on '+dmy(v.date),v:v.opp?inr(v.opp):'',f:()=>openLead(v.id)}))),'');
     sec('Cross-sell to offer','Top suggestions not yet offered',add(xsellRecs().filter(x=>inScope(x.c.key)&&x.depth&&x.depth<4&&x.miss[0]&&x.miss[0].share>=25&&!(RS.xsell[x.c.key]&&RS.xsell[x.c.key].status!=='Suggested')).sort((a,b)=>b.annual-a.annual).map(x=>({h:esc(x.c.name),s:'Offer '+x.miss[0].p+' ('+x.miss[0].share+'% of peers buy it)',v:inr(x.annual),f:()=>go('crosssell')}))),'crosssell')}
   if(role.id==='service'){const P=allPlans().filter(p=>inScope(p.ck)&&!p.done);
     sec('Visits this week','Planned and overdue',add(P.filter(p=>dayDiff(p.date,TODAY_ISO)<7).sort((a,b)=>a.date.localeCompare(b.date)).map(p=>({h:esc(p.customer),s:dmy(p.date)+' \u00b7 '+esc(p.reason||'')+' \u00b7 '+(p.engineer?esc(p.engineer):'no engineer'),v:p.overdue?'<span class="pill p-bad">Overdue</span>':'',f:()=>openVisitForm({customer:p.customer,engineer:p.engineer})}))),'schedule');
     sec('P1 visits to book','Go this week',add(V.rec.filter(r=>r.cls==='P1'&&inScope(r.ck)&&!P.some(p=>p.ck===r.ck)).map(r=>({h:esc(r.cust),s:r.trigger+': '+esc(r.why),f:()=>openPlanForm({customer:r.cust,reason:r.trigger})}))),'visits');
     sec('AMC renewals and pitches','',add(rsAll('amc').filter(a=>inScope(cust(a.customer).key)&&a.end_date>=TODAY_ISO&&dayDiff(a.end_date,TODAY_ISO)<=90).map(a=>({h:esc(a.customer),s:'Contract '+esc(a.contract_no)+' ends '+dmy(a.end_date),f:()=>go('amc')}))),'amc');
     sec('Health checks for dark accounts','Recovery starts with service',add(scopedCust().filter(c=>H[c.key].dark&&['Not started','Health check booked'].includes(recOf(c.key).status)).map(c=>({h:esc(c.name),s:recOf(c.key).status,v:inr(H[c.key].annual),f:()=>openRecovery(c.key)}))),'recovery')}
-  if(role.id==='quality'){sec('My complaint tasks','First responses, stale complaints and fixes to check',add(myTasks().map(t=>({h:t.h,s:t.s,f:t.f}))),'board');
+  if(role.id==='quality'){sec('My complaint tasks','First responses, stale complaints and fixes to check',add(myTasks().filter(t=>!t.acc).map(t=>({h:t.h,s:t.s,f:t.f}))),'board');
     sec('Open complaints accountable to me','',add(BOARD.open.filter(i=>accountableFor(i)===ME||(ME.head&&inScope(i.ck,i.owner))).sort((a,b)=>b.age-a.age).map(i=>({h:esc(i.no)+' \u00b7 '+esc(i.cust),s:esc(i.defect)+' \u00b7 '+i.status+' \u00b7 '+i.age+' days',f:()=>openComplaint(i.no)}))),'board')}
   if(role.id==='lead'){if(ME.id==='it'){const un=Object.values(CUST).filter(c=>hasParts(c)&&!(appTagOf(c.key)||(c.radar[0]&&c.radar[0].app)||(c.visit&&c.visit.app))).sort((a,b)=>annualOf(b)-annualOf(a));
       secs.push(card('Application tagging','Untagged customers, highest value first. Tagging sets the wear-cycle cohort. FY27 target: over 95% of value tagged.',tbl(['Customer','Annual value INR','Application',''],un.slice(0,40).map(c=>'<tr><td class="nm">'+esc(c.name)+'</td><td class="num">'+inr(annualOf(c))+'</td><td><input class="field" list="applist2" data-tag="'+esc(c.key)+'" placeholder="Application" style="width:200px"></td><td><button class="btn sm" data-tagsave="'+esc(c.key)+'">Save</button></td></tr>'),{empty:'Every parts customer has an application.'})+'<datalist id="applist2">'+[...new Set(COH.map(r=>r.app).concat(DECK.cohorts.map(x=>x[0])))].map(a=>'<option value="'+esc(a)+'">').join('')+'</datalist>'));

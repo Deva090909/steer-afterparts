@@ -119,7 +119,7 @@
     var r = await sb.rpc('is_app_user');
     if (r.error || !r.data) { showGate('denied'); return; }
     var a = await sb.rpc('is_app_admin'); me.admin = !!a.data;
-    started = true; hideGate(); accountMenu(); startRealtime(); readyResolve(true);
+    started = true; window.STEER_SESSION = { email: me.email, uid: me.uid }; hideGate(); accountMenu(); startRealtime(); readyResolve(true);
   }
   if (CFG.open) {
     /* Prototype mode: no sign-in. Everyone shares the same data; the role switcher picks the view. */
