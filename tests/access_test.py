@@ -90,7 +90,7 @@ with sync_playwright() as p:
     ok('removed person URL falls back', pg.evaluate('location.hash')!='#/sales/mywk/s-w', pg.evaluate('location.hash'))
     # remove Ravi now -> gap
     go('#/lead/access/it'); pg.click(f'[data-acx="{rid}"]'); pg.wait_for_timeout(300)
-    ok('gap warning when last West owner removed', 'West' in pg.locator('#drawer .banner.warn').inner_text() if pg.locator('#drawer .banner.warn').count() else False)
+    pg.uncheck('#rmTake'); pg.wait_for_timeout(100); ok('gap notice when last West owner removed', 'West' in pg.locator('#rmGap').inner_text())
     pg.evaluate('closeDrawer()')
     # restore
     pg.click('[data-acf="removed"]'); pg.wait_for_timeout(200)

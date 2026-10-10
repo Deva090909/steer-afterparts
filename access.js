@@ -78,6 +78,22 @@ const canRemove = (t, who) => canManagePerson(t, who) && !t.head && t.id !== 'cf
   ['sales', 'quality', 'service'].forEach(r => { const R = roleById(r); const j = R.nav.findIndex(n => n.id === 'team'); R.nav.splice(j + 1, 0, { id: 'access', head: true }); });
 })();
 
+/* ---------- left navigation: each position sees only the screens it works with ----------
+   `navItems` decides what a person may open (links and drill-downs keep working);
+   `navVisible` decides what is listed in their left panel. */
+const NAV_VIS = {
+  lead: { _all: ['cfo', 'lead-view'], access: ['cfo'], uploads: ['cfo'],
+    ib: [], cohorts: [], relations: [], radar: [], countdown: [], crosssell: [], inbox: [], cases: [], planner: [], visits: [], reports: [], schedule: [] },
+  sales: { cohorts: ['sales-head'], forecast: ['sales-head'], pricing: ['sales-head'], demand: ['sales-head'] },
+  quality: { health: ['quality-head'], orders: ['quality-head', 'quality-spec'], market: [] },
+  service: { cohorts: ['service-head'], demand: ['service-head'], market: [] }
+};
+function navVisible(r, who) {
+  who = who || ME; const pos = posOf(who), rules = NAV_VIS[r.id] || {}, items = navItems(r, who);
+  const shown = items.filter(n => { if (n.sec) return true; if (who.nav) return true; const v = rules[n.id] || rules._all; return !v || v.includes(pos); });
+  return shown.filter((n, i) => !n.sec || (shown[i + 1] && !shown[i + 1].sec));   // drop empty section headings
+}
+
 /* ---------- access log ---------- */
 let ACCLOG = store.get('steer-acclog', []);
 function logAccess(action, p, detail, why) {
@@ -127,7 +143,7 @@ PAGES.access = {
         (scope ? '' : '<label class="note" style="display:flex;gap:6px;align-items:center">Team <select class="field" id="acTeam"><option value="all">All teams</option>' + TEAMS.map(t => '<option value="' + t[0] + '"' + (AC.team === t[0] ? ' selected' : '') + '>' + t[1] + '</option>').join('') + '</select></label>') + '</div>' +
         '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Person</th><th>Team</th><th>Position</th><th>Covers</th><th>Screens</th><th>Status</th><th></th></tr></thead><tbody>' +
         (list.length ? list.map(p => {
-          const n = (() => { try { return navItems(roleById(p.role), p).filter(x => !x.sec).length } catch (e) { return '' } })();
+          const n = (() => { try { return navVisible(roleById(p.role), p).filter(x => !x.sec).length } catch (e) { return '' } })();
           const m = canManagePerson(p), rm = canRemove(p);
           return '<tr><td class="nm">' + esc(p.name) + (p === ME ? ' <span class="pill p-mute">you</span>' : '') + '<br><span class="sm">' + (p.email ? esc(p.email) : 'no sign-in email yet') + '</span></td>' +
             '<td>' + teamName(p.role) + '</td><td>' + esc(p.title) + (p.head ? ' <span class="pill p-due">head</span>' : '') + '</td><td class="sm">' + esc(coverage(p)) + '</td><td class="num">' + n + '</td>' +

@@ -906,7 +906,7 @@ function renderShell(){
   $('#rsMenu').innerHTML=ROLES.map((r,i)=>'<div class="hd" style="display:flex;justify-content:space-between"><span>'+r.name+' \u00b7 '+r.who+'</span><kbd style="font:500 11px \'IBM Plex Sans\';color:var(--mute);border:1px solid var(--line);border-radius:4px;padding:0 5px">'+(i+1)+'</kbd></div>'+
     PEOPLE.filter(p=>p.role===r.id).map(p=>'<button class="rs-opt" role="menuitemradio" aria-checked="'+(p===ME)+'" data-p="'+p.id+'"><span class="av sm" style="--c:'+r.c+'">'+initials(p.name)+'</span>'+
       '<span><b>'+esc(p.name)+'</b><span class="d">'+esc(p.title)+' \u00b7 '+esc(coverage(p))+'</span></span><span class="chk">'+ic('check','sm')+'</span></button>').join('')).join('');
-  $('#nav').innerHTML=navItems(role).map(n=>{
+  $('#nav').innerHTML=(typeof navVisible==='function'?navVisible(role):navItems(role)).map(n=>{
     if(n.sec)return '<div class="sec">'+n.sec+'</div>';
     const P=PAGES[n.id],ct=n.ct?n.ct():null;
     return '<a href="#/'+role.id+'/'+n.id+'/'+ME.id+'" class="'+(n.id===page?'on':'')+'"'+(n.id===page?' aria-current="page"':'')+'>'+ic(P.icon)+'<span>'+P.title+'</span>'+
