@@ -121,7 +121,10 @@
     var a = await sb.rpc('is_app_admin'); me.admin = !!a.data;
     started = true; hideGate(); accountMenu(); startRealtime(); readyResolve(true);
   }
-  sb.auth.onAuthStateChange(function (ev, session) {
+  if (CFG.open) {
+    /* Prototype mode: no sign-in. Everyone shares the same data; the role switcher picks the view. */
+    started = true; startRealtime(); readyResolve(true);
+  } else sb.auth.onAuthStateChange(function (ev, session) {
     if (ev === 'PASSWORD_RECOVERY') { recovering = true; me.email = session && session.user.email; showGate('recover'); return; }
     if (ev === 'SIGNED_OUT') { location.reload(); return; }
     if (ev === 'SIGNED_IN' || ev === 'INITIAL_SESSION') setTimeout(function () { onSession(session); }, 0);
@@ -301,7 +304,7 @@
     upload: async function (blob, opts) {
       var name = (blob.name || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80);
       var rnd = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
-      var path = (me.uid || 'anon') + '/' + rnd + '-' + name;
+      var path = (me.uid || 'shared') + '/' + rnd + '-' + name;
       var type = (opts && opts.type) || blob.type || 'application/octet-stream';
       var r = await sb.storage.from('attachments').upload(path, blob, { contentType: type, upsert: false });
       if (r.error) throw { code: /size|large/i.test(r.error.message) ? 'too_large' : 'upstream_error', message: r.error.message };

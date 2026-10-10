@@ -12,7 +12,13 @@ hosted on **Vercel** with **Supabase** as the shared backend.
 | Database schema, RLS, storage bucket | `supabase/migrations/` |
 | Vercel headers / caching | `vercel.json` |
 
-## How it works
+## Prototype mode (current)
+`config.js` has `open: true`: the app opens straight onto the role switcher with no sign-in, and everyone
+with the link shares the same live data. To lock it down later, set `open: false` and drop the
+`prototype open …` policies (see `supabase/migrations/20261010010000_prototype_open_access.sql`);
+the sign-in screen and email allowlist below then take over.
+
+## How it works (with sign-in)
 - Everyone signs in with email + password (or an emailed link). Only emails listed in
   `public.app_users` get in; admins manage that list from the account menu (bottom-right → *Team access…*).
 - All shared records (territories, owners, visits, complaints, outcomes, plans, uploaded CSV/Excel
