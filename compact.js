@@ -30,7 +30,7 @@
   function pageTables(root) {
     var tables = root.querySelectorAll('table');
     tables.forEach(function (t, ti) {
-      var body = t.tBodies[0]; if (!body) return;
+      var body = t.tBodies[0]; if (!body || t.classList.contains('nopage')) return;
       var wrap = t.parentElement && t.parentElement.classList.contains('tbl-wrap') ? t.parentElement : t;
       var rows = Array.prototype.filter.call(body.rows, function (r) { return !isAppHidden(r); });
       var bar = wrap.nextElementSibling && wrap.nextElementSibling.classList.contains('pgbar') ? wrap.nextElementSibling : null;

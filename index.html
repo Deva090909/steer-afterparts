@@ -810,10 +810,16 @@ const PEOPLE_DEF=[
  {id:'v-s',role:'service',name:'Service \u2013 South & Export',title:'Field service lead',zones:['South','Export']},
  {id:'v-n',role:'service',name:'Service \u2013 North & East',title:'Field service lead',zones:['North & East']}];
 const PEDIT=store.get('steer-people',{});
-const PEOPLE=PEOPLE_DEF.map(p=>Object.assign({},p,PEDIT[p.id]||{}));
+const PEXTRA=store.get('steer-people-x',[]);
+const PEOPLE_ALL=PEOPLE_DEF.concat(PEXTRA.filter(x=>x&&x.id&&!PEOPLE_DEF.some(d=>d.id===x.id))).map(p=>Object.assign({active:true},p,PEDIT[p.id]||{}));
+const PEOPLE=PEOPLE_ALL.filter(p=>p.active!==false);
+function rebuildPeople(){PEOPLE.length=0;PEOPLE_ALL.filter(p=>p.active!==false).forEach(p=>PEOPLE.push(p))}
 let PRIMARY=store.get('steer-primary',{});
-const savePeople=p=>{if(p)SYNC.person(p);const o={};PEOPLE.forEach(p=>{const d=PEOPLE_DEF.find(x=>x.id===p.id);o[p.id]={name:p.name,zones:p.zones};if(d.queues)o[p.id].queues=p.queues});store.set('steer-people',o)};
-const personById=id=>PEOPLE.find(p=>p.id===id);
+const isBuiltIn=p=>PEOPLE_DEF.some(d=>d.id===p.id);
+const personRec=p=>{const r={id:p.id,role:p.role,name:p.name,title:p.title,zones:p.zones,head:!!p.head,email:p.email||'',active:p.active!==false};if(p.queues)r.queues=p.queues;['added','addedBy','removedAt','removedBy'].forEach(k=>{if(p[k]!=null)r[k]=p[k]});return r};
+const savePeople=p=>{if(p)SYNC.person(p);const o={};PEOPLE_ALL.forEach(p=>{o[p.id]={name:p.name,zones:p.zones,title:p.title,email:p.email||'',active:p.active!==false};if(p.queues)o[p.id].queues=p.queues;if(p.removedAt)o[p.id].removedAt=p.removedAt});store.set('steer-people',o);
+  store.set('steer-people-x',PEOPLE_ALL.filter(p=>!isBuiltIn(p)).map(personRec))};
+const personById=id=>PEOPLE_ALL.find(p=>p.id===id);
 const initials=n=>String(n).replace(/[^A-Za-z& ]/g,' ').split(/\s+/).filter(w=>w&&w!=='&').slice(0,2).map(w=>w[0].toUpperCase()).join('')||'?';
 const coverage=p=>(p.zones==='all'?'All territories':p.zones.join(', '))+(p.queues?' \u00b7 '+p.queues.map(q=>q.split(' \u2014')[0]).join(', ')+' queue':'');
 let ME=null,SCOPE_ALL=false,ZF='all';
@@ -861,17 +867,17 @@ const lastPage=store.get('steer-lastpage',{});
 
 /* ---------- shell ---------- */
 function roleById(id){return ROLES.find(r=>r.id===id)}
-const navItems=r=>r.nav.filter(n=>!n.head||(ME&&ME.role===r.id?ME.head:false));
+const navItems=(r,who)=>{who=who||ME;const own=who&&who.role===r.id;return (own&&who.nav?who.nav:r.nav).filter(n=>!n.head||(own?who.head:false))};
 function pageAllowed(r,p,who){const keep=ME;if(who)ME=who;const ok=navItems(r).some(n=>n.id===p);ME=keep;return ok}
 function go(p,r,who){r=r||role;who=who||(r===role?ME:personById(lastPerson[r.id])||PEOPLE.find(x=>x.role===r.id&&x.head));location.hash='#/'+r.id+'/'+p+'/'+who.id}
 function route(){
   const m=location.hash.match(/^#\/(\w+)\/(\w+)(?:\/([\w-]+))?/);
   let r=m&&roleById(m[1]),p=m&&m[2],who=m&&m[3]&&personById(m[3]);
   if(!r){r=roleById(store.get('steer-role','sales'))||ROLES[1];p=lastPage[r.id]||r.home}
-  if(!who||who.role!==r.id)who=personById(lastPerson[r.id])||PEOPLE.find(x=>x.role===r.id&&x.head);
+  if(!who||who.role!==r.id||who.active===false){who=personById(lastPerson[r.id]);if(!who||who.role!==r.id||who.active===false)who=PEOPLE.find(x=>x.role===r.id&&x.head)}
   const changed=who!==ME;
   if(changed){ME=who;SCOPE_ALL=false;ZF='all'}
-  if(!PAGES[p]||!pageAllowed(r,p))p=r.home;
+  if(!PAGES[p]||!pageAllowed(r,p))p=ME.home&&pageAllowed(r,ME.home)?ME.home:r.home;
   role=r;page=p;lastPage[r.id]=p;lastPerson[r.id]=who.id;store.set('steer-lastpage',lastPage);store.set('steer-role',r.id);store.set('steer-person',lastPerson);
   const want='#/'+r.id+'/'+p+'/'+who.id;if(location.hash!==want)history.replaceState(null,'',want);
   document.documentElement.style.setProperty('--accent',r.c);
@@ -1001,7 +1007,7 @@ const SYNC={
   w(path,data){if(!DBW)return;if(!DB||!navigator.onLine){if(DB||SHARED_TRY)this.q({path,data});return}DB.doc(path).set(data).catch(e=>{if(e&&e.code==='invalid_argument'){DBW=false;toast('You have view-only access; changes stay in this browser')}else this.q({path,data})})},
   d(path){if(!DBW)return;if(!DB||!navigator.onLine){if(DB||SHARED_TRY)this.q({path,del:true});return}DB.doc(path).delete().catch(()=>this.q({path,del:true}))},
   terr(ck){TERR[ck]?this.w('territories/'+sid(ck),{ck,zone:TERR[ck]}):this.d('territories/'+sid(ck))},
-  person(p){this.w('people/'+p.id,{id:p.id,name:p.name,zones:p.zones})},
+  person(p){this.w('people/'+p.id,personRec(p))},
   primary(k){this.w('primary/'+sid(k),{k,pid:PRIMARY[k]})},
   alias(a,b){this.w('aliases/'+sid(a),{a,b})},
   aliasNo(k){this.w('aliasno/'+sid(k),{k})},
@@ -1023,7 +1029,10 @@ async function connectShared(){
   try{if(!window.claude||!window.claude.use)return;SHARED_TRY=true;const db=await window.claude.use('db');if(!db)return;DB=db;
     const onCol=(name,apply,seed)=>{let n=0;db.collection(name).onSnapshot(qs=>{n++;if(n===1&&qs.empty){if(seed)seed();return}apply(qs.docs.map(d=>d.data()));afterRemote()},()=>{})};
     onCol('territories',rows=>{TERR={};rows.forEach(r=>TERR[r.ck]=r.zone);store.set('steer-terr',TERR)},()=>Object.keys(TERR).forEach(k=>SYNC.terr(k)));
-    onCol('people',rows=>{rows.forEach(r=>{const p=personById(r.id);if(p){p.name=r.name;p.zones=r.zones}});savePeople()},()=>PEOPLE.forEach(p=>{if(PEDIT[p.id])SYNC.person(p)}));
+    onCol('people',rows=>{rows.forEach(r=>{let p=personById(r.id);if(!p&&r.role&&r.name){p=Object.assign({active:true},r);PEOPLE_ALL.push(p)}
+      if(p){p.name=r.name;p.zones=r.zones;['title','email','queues','removedAt','removedBy','added','addedBy'].forEach(k=>{if(r[k]!==undefined)p[k]=r[k]});if(r.active!==undefined)p.active=r.active}});
+      rebuildPeople();savePeople();if(ME&&ME.active===false){toast('Access for '+ME.name+' was removed');route()}},()=>PEOPLE_ALL.forEach(p=>{if(PEDIT[p.id]||!isBuiltIn(p))SYNC.person(p)}));
+    onCol('access',rows=>{if(typeof ACCLOG==='undefined')return;const m={};ACCLOG.concat(rows).forEach(e=>m[e.id]=e);ACCLOG=Object.values(m).sort((a,b)=>b.at-a.at).slice(0,500);store.set('steer-acclog',ACCLOG)},()=>{if(typeof ACCLOG!=='undefined')ACCLOG.forEach(e=>SYNC.w('access/'+e.id,e))});
     onCol('primary',rows=>{PRIMARY={};rows.forEach(r=>PRIMARY[r.k]=r.pid);store.set('steer-primary',PRIMARY)},()=>Object.keys(PRIMARY).forEach(k=>SYNC.primary(k)));
     onCol('outcomes',rows=>{OUT={};rows.forEach(r=>{const o=Object.assign({},r);delete o.key;OUT[r.key]=o});store.set('steer-outcomes',OUT)},()=>Object.keys(OUT).forEach(k=>SYNC.out(k)));
     onCol('changes',rows=>{CHANGES=rows.sort((a,b)=>b.at-a.at).slice(0,300);store.set('steer-changes',CHANGES)},()=>CHANGES.slice(0,50).forEach(e=>SYNC.change(e)));
@@ -2009,7 +2018,7 @@ function personStats(p){
   return [['Customers',Object.keys(CUST).length]];
 }
 PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
-  const canEdit=ME.head;
+  const canEdit=can('customer.territory'),canTeam=rid=>can('team.coverage',rid),canIdent=can('customer.identity'),canName=p=>canManagePerson(p);
   const custs=Object.values(CUST).filter(c=>!SCOPED||SCOPED.includes(zoneOf(c.key))).sort((a,b)=>a.name.localeCompare(b.name));
   const src={};custs.forEach(c=>{const s=zoneSrc(c.key);src[s]=(src[s]||0)+1});
   const ZL=(SCOPED||ZONES),zc=ZL.concat(SCOPED?[]:['Unassigned']).map(z=>({z,n:custs.filter(c=>zoneOf(c.key)===z).length}));
@@ -2035,17 +2044,17 @@ PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
     /* coverage with primary */
     '<div class="card" style="margin-bottom:16px"><div class="ch"><div><h2>Coverage and primary owners</h2><div class="sub">One primary per territory per team; others are backups. '+(canEdit?'Select a name to make it primary.':'')+'</div></div></div><div class="cb tbl-wrap"><table class="tbl coh"><thead><tr><th>Team</th>'+ZL.map(z=>'<th>'+z+'</th>').join('')+'</tr></thead><tbody>'+
       ['sales','quality','service'].map(rid=>'<tr><td class="nm">'+rn(rid)+'</td>'+ZL.map(z=>{const t=teamFor(rid,z),pr=t[0];
-        return '<td>'+(t.length?t.map(p=>'<button class="pillbtn'+(p===pr?' prim':'')+'" data-prim="'+rid+'|'+z+'|'+p.id+'"'+(canEdit&&t.length>1?'':' disabled')+' title="'+(p===pr?'Primary':'Make primary')+'">'+(p===pr&&t.length>1?'\u2605 ':'')+esc(p.name)+'</button>').join('')+
+        return '<td>'+(t.length?t.map(p=>'<button class="pillbtn'+(p===pr?' prim':'')+'" data-prim="'+rid+'|'+z+'|'+p.id+'"'+(canTeam(rid)&&t.length>1?'':' disabled')+' title="'+(p===pr?'Primary':'Make primary')+'">'+(p===pr&&t.length>1?'\u2605 ':'')+esc(p.name)+'</button>').join('')+
           (rid==='quality'?PEOPLE.filter(p=>p.role==='quality'&&p.queues).map(p=>'<span class="pill p-mute" title="Owns its queue in every territory" style="margin:2px">'+esc(p.name)+' (queue)</span>').join(''):'')
           :'<span class="pill p-bad">Gap: head only</span>')+'</td>'}).join('')+'</tr>').join('')+'</tbody></table></div></div>'+
     /* people */
     roles.map(rid=>{const r=roleById(rid);return '<h2 style="font-size:15px;margin:20px 0 10px">'+r.name+' team</h2><div class="agrid">'+PEOPLE.filter(p=>p.role===rid&&(!SCOPED||p.zones==='all'||p.zones.some(z=>SCOPED.includes(z)))).map(p=>{const st=personStats(p);
       return '<div class="card ag'+(p===ME?' me':'')+'"><div style="display:flex;gap:10px;align-items:center"><span class="av" style="--c:'+r.c+'">'+initials(p.name)+'</span><div style="flex:1;min-width:0">'+
-        (canEdit?'<input class="field pname" data-p="'+p.id+'" value="'+esc(p.name)+'" aria-label="Name" style="width:100%;font-weight:600">':'<b style="color:var(--ink)">'+esc(p.name)+'</b>')+
+        (canName(p)?'<input class="field pname" data-p="'+p.id+'" value="'+esc(p.name)+'" aria-label="Name" style="width:100%;font-weight:600">':'<b style="color:var(--ink)">'+esc(p.name)+'</b>')+
         '<div class="note">'+esc(p.title)+(p===ME?' \u00b7 you':'')+'</div></div></div>'+
         '<div class="mini" style="grid-template-columns:repeat(4,1fr)">'+st.map(x=>'<div><span>'+x[0]+'</span><b style="'+(x[2]?'color:var(--'+x[2]+')':'')+'">'+x[1]+'</b></div>').join('')+'</div>'+
         '<div class="note">Covers</div><div class="opt">'+(p.head?'<span class="pill p-mute">All territories</span>':
-          ['all'].concat(ZONES).map(z=>{const on=z==='all'?p.zones==='all':p.zones!=='all'&&p.zones.includes(z);return '<button type="button" data-p="'+p.id+'" data-z="'+z+'" aria-pressed="'+on+'"'+(canEdit?'':' disabled')+'>'+(z==='all'?'All':z)+'</button>'}).join(''))+
+          ['all'].concat(ZONES).map(z=>{const on=z==='all'?p.zones==='all':p.zones!=='all'&&p.zones.includes(z);return '<button type="button" data-p="'+p.id+'" data-z="'+z+'" aria-pressed="'+on+'"'+(canTeam(p.role)&&!p.head?'':' disabled')+'>'+(z==='all'?'All':z)+'</button>'}).join(''))+
           (p.queues?'<span class="pill p-warn">'+esc(p.queues.map(q=>q.split(' \u2014')[0]).join(', '))+' queue</span>':'')+'</div>'+
         (p===ME?'':'<button class="btn sm" data-sign="'+p.id+'" style="align-self:flex-start;margin-top:auto">Sign in as '+esc(p.name)+'</button>')+'</div>'}).join('')+'</div>'}).join('')+
     /* engineers */
@@ -2054,7 +2063,7 @@ PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
     /* identity review */
     '<div class="card" style="margin-top:20px" id="idrev"><div class="ch"><div><h2>Customer identity</h2><div class="sub">Records are joined by name. Confirm or reject the near-matches so complaints, orders and visits land on one record.</div></div><span class="pill '+(rv.length?'p-warn':'p-ok')+'">'+rv.length+' to review</span></div>'+
       (rv.length?'<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Record A</th><th>Record B</th><th></th></tr></thead><tbody>'+rv.map(([a,b])=>{const A=CUST[a],B=CUST[b],d=c=>'<span class="nm">'+esc(c.name)+'</span><br><span class="sm">'+esc(zoneOf(c.key))+' \u00b7 '+custTags(c).split(' \u00b7 ').slice(1).join(', ')+'</span>';
-        return '<tr><td>'+d(A)+'</td><td>'+d(B)+'</td><td style="white-space:nowrap">'+(canEdit?'<button class="btn sm" data-merge="'+esc(a)+'|'+esc(b)+'">Same customer</button> <button class="btn sm" data-nomerge="'+esc(a)+'|'+esc(b)+'">Different</button>':'<span class="note">Heads decide</span>')+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="empty">No near-matches waiting.</div>')+
+        return '<tr><td>'+d(A)+'</td><td>'+d(B)+'</td><td style="white-space:nowrap">'+(canIdent?'<button class="btn sm" data-merge="'+esc(a)+'|'+esc(b)+'">Same customer</button> <button class="btn sm" data-nomerge="'+esc(a)+'|'+esc(b)+'">Different</button>':'<span class="note">IT / ERP or CFO office decides</span>')+'</td></tr>'}).join('')+'</tbody></table></div>':'<div class="empty">No near-matches waiting.</div>')+
       '<details class="cb" style="border-top:1px solid var(--line2)"><summary class="note" style="cursor:pointer">Joined automatically or by confirmation ('+custs.filter(c=>c.names.size>1).length+' customers)</summary><div class="rowlist" style="margin-top:8px">'+
         custs.filter(c=>c.names.size>1).map(c=>'<div class="r"><span class="grow"><b>'+esc(c.name)+'</b><br><span class="note">'+[...c.names].map(esc).join(' \u00b7 ')+'</span></span>'+(ALIAS_DEF[[...c.names].map(norm).find(n=>ALIAS[n])||'']?'<span class="pill p-due">Confirmed in audit</span>':'')+'</div>').join('')+'</div></details></div>'+
     /* customer territories */
@@ -2072,13 +2081,13 @@ PAGES.team={title:'Team & territories',icon:'users',global:true,render(el){
         CHANGES.slice(0,100).map(e=>'<tr><td class="sm">'+new Date(e.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'</td><td class="nm">'+esc(e.name)+'</td><td>'+esc(e.from)+'</td><td>'+esc(e.to)+'</td><td class="sm">'+esc(e.how)+'</td><td class="sm">'+esc(e.by)+'</td></tr>').join('')+'</tbody></table></div>'
        :'<div class="empty">No territory changes yet.</div>')+'</div>';
   /* handlers */
-  el.querySelectorAll('.pname').forEach(i=>i.onchange=()=>{const p=personById(i.dataset.p),v=i.value.trim();if(!v){i.value=p.name;return}p.name=v;savePeople(p);refreshNav();toast('Renamed to '+v)});
+  el.querySelectorAll('.pname').forEach(i=>i.onchange=()=>{const p=personById(i.dataset.p),v=i.value.trim();if(!v){i.value=p.name;return}if(!canManagePerson(p)){i.value=p.name;return}const old=p.name;p.name=v;savePeople(p);logAccess('edited',p,'name '+old+' \u2192 '+v,'Team & territories');refreshNav();toast('Renamed to '+v)});
   el.querySelectorAll('.opt button[data-z]').forEach(b=>b.onclick=()=>{const p=personById(b.dataset.p),z=b.dataset.z,before=p.zones;
     let next;if(z==='all')next='all';else{let zs=p.zones==='all'?[]:p.zones.slice();zs=zs.includes(z)?zs.filter(x=>x!==z):zs.concat(z);if(!zs.length){toast('Keep at least one territory');return}next=zs}
     const lost=ZONES.filter(x=>(before==='all'||before.includes(x))&&!(next==='all'||next.includes(x))&&coverers(p.role,x).length===1);
     if(lost.length&&!confirm(lost.join(' and ')+' will have no '+roleById(p.role).name+' owner after this change. Its customers fall to the head. Continue?'))return;
-    p.zones=next;savePeople(p);refreshNav();renderPage();toast(p.name+' now covers '+coverage(p))});
-  el.querySelectorAll('[data-prim]').forEach(b=>b.onclick=()=>{const [rid,z,pid]=b.dataset.prim.split('|');setPrimary(rid,z,pid);refreshNav();renderPage();toast(personById(pid).name+' is now primary for '+z)});
+    if(!can('team.coverage',p.role)||p.head){toast('Only the '+roleById(p.role).name+' head or the CFO office can change this');return}const oc=coverage(p);p.zones=next;savePeople(p);logAccess('edited',p,'covers '+oc+' \u2192 '+coverage(p),'Team & territories');refreshNav();renderPage();toast(p.name+' now covers '+coverage(p))});
+  el.querySelectorAll('[data-prim]').forEach(b=>b.onclick=()=>{const [rid,z,pid]=b.dataset.prim.split('|');if(!can('team.coverage',rid)){toast('Only the '+roleById(rid).name+' head or the CFO office can change this');return}setPrimary(rid,z,pid);refreshNav();renderPage();toast(personById(pid).name+' is now primary for '+z)});
   el.querySelectorAll('[data-sign]').forEach(b=>b.onclick=()=>switchPerson(b.dataset.sign));
   el.querySelectorAll('.tz').forEach(sel=>sel.onchange=()=>{const k=sel.dataset.k;if(sel.value==='Unassigned')return;if(setTerritory(k,sel.value,'Manual'))toast(CUST[k].name+' moved to '+sel.value);refreshNav();renderPage()});
   el.querySelectorAll('[data-tf]').forEach(b=>b.onclick=()=>{TM.f=b.dataset.tf;TM.limit=100000;renderPage()});
@@ -2590,7 +2599,7 @@ function freshness(n){const at=lastLoad(n);if(!at)return {st:'never',label:'Neve
 function saveSettings(){store.set('steer-settings',SETTINGS);SYNC.w('settings/app',SETTINGS)}
 
 /* ---- privacy: contact names are kept for a set time after closure, and shown only to Quality and heads ---- */
-const canSeeContacts=()=>ME&&(ME.head||role.id==='quality');
+const canSeeContacts=()=>ME&&(typeof can==='function'?can('contacts.view'):(ME.head||role.id==='quality'));
 const showContact=v=>v?(canSeeContacts()?v:'(contact hidden)'):'';
 function applyRetention(){const cut=addDays(TODAY_ISO,-Math.round(SETTINGS.retentionMonths*30.4));let n=0;
   Object.values(COMPL).forEach(x=>{if(x.closedDate&&x.closedDate<cut&&x.rec&&x.rec.contact){x.rec.contact='';x.redacted=TODAY_ISO;n++;SYNC.w('complaints/'+sid(x.no),x)}});
@@ -3337,9 +3346,8 @@ PAGES.radar.render=function(el){_rad(el);const rad=sRad(),tiers=['HIGH','MEDIUM'
     '<div><div class="label" style="margin-top:0">Verify first: low confidence</div><div class="note">'+tiers[2].length+' lines \u00b7 '+inr(tiers[2].reduce((a,r)=>a+r.ann,0))+' a year. One order or none; cohort benchmark only. Check the machine is still running first.'+(DS.ledger?'':' Medium and low tiers appear when the full parts ledger is uploaded.')+'</div></div></div></div>');
   const anchor=el.querySelector('.kpis');if(anchor)anchor.after(box.firstChild)};
 
-addEventListener('hashchange',route);
-route();
-connectShared();
 </script>
+<script src="access.js"></script>
+<script>addEventListener('hashchange',route);route();connectShared();</script>
 <script src="compact.js"></script>
 </body></html>
